@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Magma Orchestrator, NMS, and AGW Installation and Setup</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f7fa;
+            color: #2e1a47;
+        }
+
+        h1 {
+            font-size: 2em;
+            color: #6b4ca6; /* Magma Purple */
+            margin-bottom: 0.5em;
+            border-bottom: 2px solid #6b4ca6;
+            padding-bottom: 0.2em;
+        }
+
+        h2 {
+            font-size: 1.6em;
+            color: #4a2c70;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+            border-bottom: 1px solid #6b4ca6;
+            padding-bottom: 0.2em;
+        }
+
+        h3 {
+            font-size: 1.3em;
+            color: #4a2c70;
+            margin-top: 1em;
+        }
+
+        p {
+            margin-bottom: 1em;
+        }
+
+        ul, ol {
+            margin: 0 0 1em 2em;
+        }
+
+        .code-block {
+            background-color: #f4f0fa;
+            border-left: 5px solid #6b4ca6;
+            padding: 15px;
+            margin: 10px 0 20px 0;
+            overflow-x: auto;
+            font-family: "Courier New", Courier, monospace;
+            font-size: 0.95em;
+        }
+
+        a {
+            color: #6b4ca6;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ccc;
+            font-size: 0.9em;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Magma Orchestrator, NMS, and Access Gateway Installation and Setup (version 1.9.0)</h1>
+
+<h2>Introduction</h2>
+<p>Magma is an open-source software platform that provides a flexible and extensible mobile core network and tools for LTE, 5G, and Wi-Fi deployments. This page covers how I installed Magma 1.9.0 Orchestrator (orc8r), Network Management System (NMS), and Access Gateway (AGW) on a mix of bare-metal and virtualized environments. as of November 2025. My extensive gratitude goes to <a href="https://hackmd.io/@RaffieWinata">Raffie Winata</a>, <a href="https://learn.rakwireless.com/hc/en-us">RAK Wireless</a>, and the <a href="https://magma.github.io/magma/docs/basics/introduction.html">Magma Documentation Authors</a> whose work greatly helped me for prerequisite setup, Magma orchestrator + nms installation, and AGW installation respectively. - <a href="https://github.com/laniw">Lani</a></p>
+
+<h2>Prerequisites</h2>
+
+
+<p>The entire prerequisite section is to be done on your host PC where you deploy Magma's orchestrator and NMS.</p>
+
+<h3>1. Docker & Docker Compose</h3>
+<p>Install Docker and Docker Compose for containerized deployment.</p>
+
+<div class="code-block"><pre>sudo apt update && sudo apt install -y docker.io
+
+sudo curl -SL https://github.com/docker/compose/releases/download/v2.12.2/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
+
+sudo chmod +x /usr/local/bin/docker-compose
+
+# Add docker to sudo group
+sudo groupadd docker
+sudo gpasswd -a ${USER} docker
+sudo service docker restart
+
+# Verify Docker and Docker Compose
+docker --version
+docker-compose --version
+sudo docker run hello-world
+</pre></div>
+
+<h3>2. Golang</h3>
+<div class="code-block"><pre>wget https://linuxfoundation.jfrog.io/artifactory/magma-blob/go1.18.3.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.18.3.linux-amd64.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+go version</pre></div>
+
+<h3>3. Pyenv</h3>
+<div class="code-block"><pre>sudo apt update -y
+sudo apt install -y make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python3-openssl git
+
+git clone https://github.com/pyenv/pyenv.git ~/.pyenv
+
+echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
+echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
+echo -e 'if command -v pyenv 1>/dev/null 2>&1; then\n eval "$(pyenv init -) "\nfi' >> ~/.bashrc
+exec "$SHELL"
+
+pyenv install 3.8.10
+pyenv global 3.8.10</pre></div>
+
+<h3>4. Pip & Dependencies</h3>
+<div class="code-block"><pre>sudo apt install python3-pip
+pip3 install ansible fabric3 jsonpickle requests PyYAML</pre></div>
+
+<h2>Orchestrator and NMS Installation</h2>
+
+<p>This is also going to be done on the host PC.</p>
+
+<h3>Download Magma Source Code</h3>
+<div class="code-block"><pre>git clone https://github.com/magma/magma.git
+cd magma</pre></div>
+
+<h3>Build Orchestrator & NMS</h3>
+<div class="code-block"><pre>export MAGMA_ROOT=${PWD}
+cd ${MAGMA_ROOT}/orc8r/cloud/docker
+./build.py --all
+cd ${MAGMA_ROOT}/nms
+docker-compose build</pre></div>
+
+<h3>Run Orchestrator & NMS</h3>
+<div class="code-block"><pre># Run Orchestrator
+cd ${MAGMA_ROOT}/orc8r/cloud/docker
+./run.py --metrics
+
+# Run NMS
+cd ${MAGMA_ROOT}/nms/
+docker-compose up -d
+
+# Create default organization & admin account
+./scripts/dev_setup.sh</pre></div>
+
+<h3>Add Host Record on Your PC's Host List</h3>
+<div class="code-block"><pre># Add this line to /etc/hosts
+&lt;ipaddress.of.your.host.pc&gt; magma-test.localhost</pre></div>
+
+<h3>Login Credentials</h3>
+<div class="code-block"><pre>
+# Visit the URL and enter in the credentials
+URL: https://magma-test.localhost
+Username: admin@magma.test
+Password: password1234</pre></div>
+
+<h2>VirtualBox + Ubuntu Setup for Access Gateway</h2>
+
+<p>I do not have external hardware so I installed the access gateway through an Ubuntu 20.04 VM on my host PC! Note that it is important that you use Ubuntu 20.04 since there is a package that Magma AGW relies on (libssl1.1) that only exists in Ubuntu 18.04 and 20.04 as it was replaced in Ubuntu 22.04 with libssl3. Details below...</p>
+
+<h3>Install VirtualBox</h3>
+<p>Download and install Oracle VirtualBox for your host OS. Create a new VM:</p>
+<ul>
+    <li>OS Type: Linux → Ubuntu (64-bit)</li>
+    <li>Memory: 4096 MB or higher</li>
+    <li>CPU Cores: 2 cores (ideally 4)</li>
+</ul>
+<p>Additionally, make sure that the optical device/disk is given priority in the boot order!</p>
+
+<h3>Install Ubuntu 20.04 on VM</h3>
+<p>Attach Ubuntu 20.04 ISO, boot VM, and follow prompts to install. After installation:</p>
+<div class="code-block"><pre>sudo apt update && sudo apt upgrade -y
+sudo apt install -y openssh-server curl wget git</pre></div>
+
+<h3>Prepare VM for AGW Deployment</h3>
+<ul>
+    <li>Set static IP or DHCP reservation for VM.</li>
+    <li>Ensure VM can reach Orchestrator/NMS machine via network.</li>
+    <li>Install Docker and Docker Compose on VM (see prerequisites).</li>
+    <li>Install Magma on VM (see prerequisites).</li>
+</ul>
+
+<h2>Deploy Access Gateway (Docker)</h2>
+<p>On your VM running Ubuntu, deploy the Access Gateway (AGW) using the official Magma Docker installation guide: <a href="https://magma.github.io/magma/docs/lte/deploy_install_docker">Deploy AGW with Docker</a>.</p>
+
+<h3>Install Docker & Docker Compose (if not already installed)</h3>
+<div class="code-block"><pre>
+sudo apt update
+sudo apt install -y docker.io
+sudo curl -SL https://github.com/docker/compose/releases/download/v2.12.2/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+sudo groupadd docker
+sudo gpasswd -a ${USER} docker
+sudo service docker restart
+docker --version
+docker-compose --version
+</pre></div>
+
+<h3>Install AGW Using the Magma Docker Script</h3>
+<div class="code-block"><pre>
+sudo -i
+mkdir -p /var/opt/magma/certs
+
+# Copy your Orchestrator rootCA
+cat > /var/opt/magma/certs/rootCA.pem << EOF
+-----BEGIN CERTIFICATE-----
+...certificate contents...
+-----END CERTIFICATE-----
+EOF
+
+# Download and run the Docker install script
+wget https://github.com/magma/magma/raw/v1.9/lte/gateway/deploy/agw_install_docker.sh
+bash agw_install_docker.sh
+
+# Verify installation
+cd /var/opt/magma/docker
+sudo docker-compose ps
+</pre></div>
+
+<h3>Configure AGW to Connect to Orchestrator</h3>
+<div class="code-block"><pre>
+cat << EOF | sudo tee /var/opt/magma/configs/control_proxy.yml
+cloud_address: controller.magma.test
+cloud_port: 443
+bootstrap_address: bootstrapper-controller.magma.test
+bootstrap_port: 443
+fluentd_address: fluentd.magma.test
+fluentd_port: 24224
+rootca_cert: /var/opt/magma/certs/rootCA.pem
+EOF
+
+# Start AGW services
+sudo docker-compose up -d
+
+# Retrieve Hardware ID and Challenge Key
+sudo docker-compose exec magmad show_gateway_info.py
+</pre></div>
+
+<h3>Notes</h3>
+<ul>
+  <li>A common error comes from the misconfiguration of the hosts file. Update `/etc/hosts` on the VM for all Orchestrator services as needed.</li>
+  <li>After registration, the AGW should appear in NMS for network assignment.</li>
+</ul>
+
+<h2>Creating a Network</h2>
+<p>Once Orchestrator, NMS, and AGW are running, log in to NMS through <a href="https://magma-test.localhost">https://magma-test.localhost</a> and create a network for your deployment using the GUI. Assign AGWs to this network and configure cellular or Wi-Fi profiles as needed.</p>
+
+<footer>
+Credits: <a href="https://hackmd.io/@RaffieWinata/rJ5oHgk3a">HackMD by Raffie Winata</a>, <a href="https://learn.rakwireless.com/hc/en-us/articles/26476385758615-How-To-Configure-Magma-Orchestrator-NMS#ubuntu-server-20-04-lts-64-bit-installation">RAK Wireless Guide</a>, and <a href="https://magma.github.io/magma/docs/basics/introduction.html">Magma's Official Documentation</a>
+</footer>
+
+</body>
+</html>
